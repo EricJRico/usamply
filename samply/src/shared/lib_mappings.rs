@@ -143,7 +143,9 @@ impl LibMappingOpQueue {
         self.0.is_empty()
     }
 
-    pub fn into_iter(self) -> LibMappingOpQueueIter {
+    pub fn into_iter(mut self) -> LibMappingOpQueueIter {
+        // Backdated ops (end-of-session JIT rundown) are pushed out of timestamp order.
+        self.0.sort_by_key(|(timestamp, _)| *timestamp);
         LibMappingOpQueueIter(self.0.into_iter().peekable())
     }
 }

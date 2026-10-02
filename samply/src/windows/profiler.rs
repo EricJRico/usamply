@@ -1,11 +1,14 @@
 use std::os::windows::process::ExitStatusExt;
 use std::process::ExitStatus;
+use std::time::{Duration, Instant};
+
+use tokio::sync::oneshot::error::TryRecvError;
 
 use fxprof_processed_profile::{Profile, ReferenceTimestamp, SamplingInterval};
 
 use super::etw_gecko;
 use super::profile_context::ProfileContext;
-use crate::shared::ctrl_c::CtrlC;
+use crate::shared::ctrl_c::{self, CtrlC};
 use crate::shared::included_processes::IncludedProcesses;
 use crate::shared::prop_types::{ProfileCreationProps, RecordingMode, RecordingProps};
 use crate::windows::elevated_helper::ElevatedHelperSession;
@@ -62,9 +65,7 @@ pub fn run(
             let ctrl_c_receiver = CtrlC::observe_oneshot();
             eprintln!("Profiling all processes...");
             eprintln!("Press Ctrl+C to stop.");
-            // TODO: Respect recording_props.time_limit, if specified
-            // Wait for Ctrl+C.
-            let _ = ctrl_c_receiver.blocking_recv();
+            wait_for_ctrl_c_or_time_limit(ctrl_c_receiver, recording_props.time_limit);
             None
         }
         RecordingMode::Pid(pid) => {
@@ -72,9 +73,7 @@ pub fn run(
             // TODO: check that process with this pid exists
             eprintln!("Profiling process with pid {pid}...");
             eprintln!("Press Ctrl+C to stop.");
-            // TODO: Respect recording_props.time_limit, if specified
-            // Wait for Ctrl+C.
-            let _ = ctrl_c_receiver.blocking_recv();
+            wait_for_ctrl_c_or_time_limit(ctrl_c_receiver, recording_props.time_limit);
             Some(IncludedProcesses {
                 name_substrings: Vec::new(),
                 pids: vec![pid],
@@ -193,4 +192,22 @@ fn get_native_arch() -> &'static str {
 #[cfg(target_arch = "aarch64")]
 fn get_native_arch() -> &'static str {
     "arm64"
+}
+
+/// Block until Ctrl+C is pressed or, if `time_limit` is set, until it has elapsed.
+fn wait_for_ctrl_c_or_time_limit(
+    mut ctrl_c_receiver: ctrl_c::Receiver,
+    time_limit: Option<Duration>,
+) {
+    let Some(time_limit) = time_limit else {
+        let _ = ctrl_c_receiver.blocking_recv();
+        return;
+    };
+    let deadline = Instant::now() + time_limit;
+    while Instant::now() < deadline {
+        match ctrl_c_receiver.try_recv() {
+            Err(TryRecvError::Empty) => std::thread::sleep(Duration::from_millis(50)),
+            _ => return,
+        }
+    }
 }

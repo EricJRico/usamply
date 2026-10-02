@@ -423,8 +423,12 @@ pub fn handle_coreclr_event(
             // difference between *Verbose and not, is Verbose includes the names
 
             "MethodLoadVerbose" | "MethodDCStartVerbose" | "LoadVerbose" | "DCStartVerbose"
+            // End rundown: Mono (incl. Unity's) has no start rundown on attach, but lists every
+            // live method when the session stops. Backdated so they cover the whole recording.
+            | "MethodDCEndVerbose" | "DCEndVerbose" | "DCStopVerbose"
             // | "R2RGetEntryPoint" // not sure we need this? R2R methods should be covered by PDB files
             => {
+                let is_end_rundown = matches!(method_event, "MethodDCEndVerbose" | "DCEndVerbose" | "DCStopVerbose");
                 // R2RGetEntryPoint shares a lot of fields with MethodLoadVerbose
                 let is_r2r = method_event == "R2RGetEntryPoint";
 
@@ -450,7 +454,7 @@ pub fn handle_coreclr_event(
 
                 let method_name = format!("{method_basename} [{method_namespace}] \u{2329}{method_signature}\u{232a}");
 
-                context.handle_coreclr_method_load(timestamp_raw, pid, method_name, method_start_address, method_size);
+                context.handle_coreclr_method_load(timestamp_raw, pid, method_name, method_start_address, method_size, is_end_rundown);
                 handled = true;
             }
             "ModuleLoad" | "ModuleDCStart" |

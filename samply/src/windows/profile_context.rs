@@ -1776,6 +1776,7 @@ impl ProfileContext {
         method_name: String,
         method_start_address: u64,
         method_size: u32,
+        backdate: bool,
     ) {
         let Some(process) = self.processes.get_by_pid_and_timestamp(pid, timestamp_raw) else {
             log::debug!(
@@ -1794,7 +1795,7 @@ impl ProfileContext {
         let info = LibMappingInfo::new_jit_function(lib.lib_handle(), lib.default_category(), None);
 
         process.add_jit_function(
-            timestamp_raw,
+            if backdate { 0 } else { timestamp_raw },
             lib,
             method_name,
             method_start_address,
